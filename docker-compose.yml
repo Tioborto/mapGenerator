@@ -1,0 +1,120 @@
+services:
+  # ─────────────────────────────────────────────
+  # BRouter — Trail/road routing engine (A-to-B)
+  # Built from source (no official Docker image)
+  # ─────────────────────────────────────────────
+  brouter:
+    build:
+      context: ./brouter
+      dockerfile: Dockerfile
+    container_name: mapgenerator-brouter
+    ports:
+      - "17777:17777"
+    volumes:
+      - ./segments4:/segments4
+    #  - ./profiles:/customprofiles
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:17777/brouter?lonlats=2.3,48.8|2.4,48.9&profile=gravel&format=geojson" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # ─────────────────────────────────────────────
+  # GraphHopper — Loop/round-trip routing engine
+  # Uses native round_trip algorithm
+  # ─────────────────────────────────────────────
+  graphhopper:
+    image: israelhikingmap/graphhopper:latest
+    container_name: mapgenerator-graphhopper
+    ports:
+      - "8989:8989"
+    volumes:
+      - ./graphhopper/data:/data
+      - ./graphhopper/config.yml:/config/config.yml
+    environment:
+      - JAVA_OPTS=-Xmx8g -Xms1g
+    command: [ "--config", "/config/config.yml" ]
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8989/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s # GH needs time to process OSM data on first run
+
+  # ─────────────────────────────────────────────
+  # Photon — Geocoder
+  # For the smoke test, we use the public Komoot API 
+  # to avoid a 60GB index download.
+  # ─────────────────────────────────────────────
+  # photon:
+  #   image: tonsnoei/photon-geocoder:latest
+  #   container_name: mapgenerator-photon
+  #   ports:
+  #     - "2322:2322"
+  #   volumes:
+  #     - photon-data:/photon/photon_data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:2322/api?q=Paris"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 60s
+
+  # ─────────────────────────────────────────────
+  # Backend — FastAPI (Python)
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mapgenerator-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - BROUTER_URL=http://brouter:17777
+      - GRAPHHOPPER_URL=http://graphhopper:8989
+      - PHOTON_URL=https://photon.komoot.io
+    depends_on:
+      brouter:
+        condition: service_healthy
+      graphhopper:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Frontend — Next.js 15
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mapgenerator-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Nginx — Reverse Proxy
+  # ─────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: mapgenerator-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+volumes:
+  photon-data:
