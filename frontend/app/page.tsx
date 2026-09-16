@@ -3,7 +3,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 
-// MapLibre must be client-side only (uses browser APIs)
 const MapView = dynamic(() => import("./components/MapView"), {
   ssr: false,
   loading: () => (
@@ -141,6 +140,7 @@ export default function Home() {
 
   // ── Map click (coordinate picking) ─────────────────────────────────────
   const handleMapClick = useCallback((coord: Coordinate) => {
+    console.log("handleMapClick appelé avec:", coord);
     setStartCoord(coord);
     setAddressQuery(`${coord.lat.toFixed(5)}, ${coord.lon.toFixed(5)}`);
     setIsPickingCoord(false);
@@ -480,6 +480,7 @@ export default function Home() {
           )}
         </div>
       </aside>
+
 
       {/* ── Map ── */}
       <div className="map-container">

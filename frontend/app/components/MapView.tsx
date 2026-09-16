@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import type { Map as MaplibreMap, Marker, GeoJSONSource } from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 interface Coordinate {
   lon: number;
@@ -16,17 +17,33 @@ interface MapViewProps {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GPX → GeoJSON converter (lightweight, no deps)
+// GPX → GeoJSON converter
 // ─────────────────────────────────────────────────────────────────────────────
 function gpxToGeoJson(gpxText: string): GeoJSON.FeatureCollection {
   const parser = new DOMParser();
   const doc = parser.parseFromString(gpxText, "application/xml");
-  const trkpts = doc.querySelectorAll("trkpt");
 
-  const coords: [number, number][] = Array.from(trkpts).map((pt) => [
-    parseFloat(pt.getAttribute("lon") || "0"),
-    parseFloat(pt.getAttribute("lat") || "0"),
-  ]);
+  const allElements = Array.from(doc.getElementsByTagName("*"));
+  const points = allElements.filter((el) => {
+    const tag = el.localName.toLowerCase();
+    return tag === "trkpt" || tag === "rtept" || tag === "wpt";
+  });
+
+  const coords: [number, number][] = points
+    .map((pt): [number, number] | null => {
+      const latStr = pt.getAttribute("lat");
+      const lonStr = pt.getAttribute("lon");
+
+      if (!latStr || !lonStr) return null;
+
+      const lat = parseFloat(latStr);
+      const lon = parseFloat(lonStr);
+
+      if (isNaN(lat) || isNaN(lon)) return null;
+
+      return [lon, lat];
+    })
+    .filter((c): c is [number, number] => c !== null);
 
   return {
     type: "FeatureCollection",
@@ -34,7 +51,10 @@ function gpxToGeoJson(gpxText: string): GeoJSON.FeatureCollection {
       {
         type: "Feature",
         properties: {},
-        geometry: { type: "LineString", coordinates: coords },
+        geometry: {
+          type: "LineString",
+          coordinates: coords,
+        },
       },
     ],
   };
@@ -43,7 +63,6 @@ function gpxToGeoJson(gpxText: string): GeoJSON.FeatureCollection {
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
-
 export default function MapView({
   onMapClick,
   startCoord,
@@ -51,117 +70,158 @@ export default function MapView({
   isClickMode = false,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MaplibreMap | null>(null);
-  const markerRef = useRef<Marker | null>(null);
-  const isInitialized = useRef(false);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const markerRef = useRef<maplibregl.Marker | null>(null);
+  const isLoadedRef = useRef(false);
 
-  // ── Initialize map ───────────────────────────────────────────────────────
+  const onMapClickRef = useRef(onMapClick);
   useEffect(() => {
-    if (!containerRef.current) return;
-    let cancelled = false;
-    let mapInstance: MaplibreMap | undefined;
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
-    (async () => {
-      const maplibre = await import("maplibre-gl");
-      await import("maplibre-gl/dist/maplibre-gl.css");
-      if (cancelled || !containerRef.current) return; // le composant a été démonté entre-temps
+  // ── Initialize Map ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current) return;
 
-      const map = new maplibre.Map({
-        container: containerRef.current,
-        style: {
-          version: 8,
-          sources: {
-            "osm-tiles": {
-              type: "raster",
-              tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-              tileSize: 256,
-              attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-              maxzoom: 19,
-            },
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: {
+        version: 8,
+        sources: {
+          "osm-tiles": {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution: '© OpenStreetMap contributors',
+            maxzoom: 19,
           },
-          layers: [
-            {
-              id: "osm-tiles",
-              type: "raster",
-              source: "osm-tiles",
-              paint: {
-                // Dark tint over OSM tiles to match the dark UI theme
-                "raster-brightness-min": 0,
-                "raster-brightness-max": 0.55,
-                "raster-saturation": -0.4,
-                "raster-contrast": 0.1,
-              },
-            },
-          ],
         },
-        center: [2.3488, 48.8534],  // Paris, France
-        zoom: 11,
-      });
+        layers: [
+          {
+            id: "osm-tiles",
+            type: "raster",
+            source: "osm-tiles",
+          },
+        ],
+      },
+      center: [3.066667, 50.633333], // Lille
+      zoom: 11,
+    });
 
-      mapInstance = map;
-      mapRef.current = map;
+    mapRef.current = map;
 
-      // Map click handler
-      map.on("click", (e) => {
-        if (onMapClick) {
-          onMapClick({ lon: e.lngLat.lng, lat: e.lngLat.lat });
-        }
-      });
+    map.on("load", () => {
+      isLoadedRef.current = true;
+      map.resize();
+    });
 
-      // Cursor style based on click mode
-      map.getCanvas().style.cursor = isClickMode ? "crosshair" : "grab";
+    map.on("click", (e) => {
+      onMapClickRef.current?.({ lon: e.lngLat.lng, lat: e.lngLat.lat });
+    });
 
-      // Route source + layer (filled in when GPX arrives)
-      map.on("load", () => {
+    return () => {
+      isLoadedRef.current = false;
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // ── Update cursor mode ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current) return;
+    mapRef.current.getCanvas().style.cursor = isClickMode ? "crosshair" : "grab";
+  }, [isClickMode]);
+
+  // ── Render GPX route ───────────────────────────────────────────────────────
+  const renderRoute = useCallback(async (blob: Blob) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const text = await blob.text();
+    const geojson = gpxToGeoJson(text);
+
+    const applyData = () => {
+      if (!mapRef.current || !isLoadedRef.current) return false;
+
+      let source = map.getSource("route") as maplibregl.GeoJSONSource | undefined;
+
+      if (!source) {
         map.addSource("route", {
           type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
+          data: geojson,
         });
 
-        // Route glow (thick, blurred-looking line behind the main one)
+        // Glowing backdrop
         map.addLayer({
           id: "route-glow",
           type: "line",
           source: "route",
           layout: { "line-join": "round", "line-cap": "round" },
           paint: {
-            "line-color": "#4f9cf9",
-            "line-width": 8,
-            "line-opacity": 0.25,
-            "line-blur": 4,
+            "line-color": "#ff0000",
+            "line-width": 10,
+            "line-opacity": 0.3,
           },
         });
 
-        // Main route line
+        // Main line (thick bright red to eliminate visibility issues)
         map.addLayer({
           id: "route-line",
           type: "line",
           source: "route",
           layout: { "line-join": "round", "line-cap": "round" },
           paint: {
-            "line-color": "#4f9cf9",
-            "line-width": 3,
-            "line-opacity": 0.9,
+            "line-color": "#ff0000",
+            "line-width": 6,
+            "line-opacity": 1,
           },
         });
-      });
-    })();
+      } else {
+        source.setData(geojson);
+      }
 
-    return () => {
-      cancelled = true;
-      mapInstance?.remove();
-      mapRef.current = null;
+      // Re-framing logic
+      const coords = (geojson.features[0]?.geometry as GeoJSON.LineString)?.coordinates;
+      if (coords && coords.length > 0) {
+        let minLon = Infinity, maxLon = -Infinity;
+        let minLat = Infinity, maxLat = -Infinity;
+
+        for (const [lon, lat] of coords) {
+          if (lon < minLon) minLon = lon;
+          if (lon > maxLon) maxLon = lon;
+          if (lat < minLat) minLat = lat;
+          if (lat > maxLat) maxLat = lat;
+        }
+
+        map.resize();
+        map.fitBounds(
+          [[minLon, minLat], [maxLon, maxLat]],
+          { padding: 80, duration: 800 }
+        );
+      }
+      return true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    if (!applyData()) {
+      const interval = setInterval(() => {
+        if (applyData()) clearInterval(interval);
+      }, 50);
+      setTimeout(() => clearInterval(interval), 3000);
+    }
   }, []);
 
-  // ── Update cursor when click mode changes ────────────────────────────────
   useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.getCanvas().style.cursor = isClickMode ? "crosshair" : "grab";
-  }, [isClickMode]);
+    const map = mapRef.current;
+    if (!gpxBlob) {
+      if (!map || !isLoadedRef.current) return;
+      const source = map.getSource("route") as maplibregl.GeoJSONSource | undefined;
+      source?.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+    renderRoute(gpxBlob);
+  }, [gpxBlob, renderRoute]);
 
-  // ── Update start marker ──────────────────────────────────────────────────
+  // ── Update start marker ────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -173,59 +233,35 @@ export default function MapView({
 
     if (!startCoord) return;
 
-    const addMarker = async () => {
-      const maplibre = await import("maplibre-gl");
+    const el = document.createElement("div");
+    el.className = "start-marker";
+    el.innerHTML = `
+      <div style="
+        width: 20px; height: 20px;
+        background: #4f9cf9;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 0 12px rgba(79,156,249,0.6), 0 2px 8px rgba(0,0,0,0.4);
+      "></div>
+    `;
 
-      const el = document.createElement("div");
-      el.className = "start-marker";
-      el.innerHTML = `...`; // inchangé
+    const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+      .setLngLat([startCoord.lon, startCoord.lat])
+      .addTo(map);
 
-      const marker = new maplibre.Marker({ element: el, anchor: "center" })
-        .setLngLat([startCoord.lon, startCoord.lat])
-        .addTo(map);
+    markerRef.current = marker;
 
-      markerRef.current = marker;
-    };
-
-    addMarker();
+    map.flyTo({
+      center: [startCoord.lon, startCoord.lat],
+      zoom: Math.max(map.getZoom(), 13),
+      duration: 1000,
+    });
   }, [startCoord]);
 
-  // ── Render GPX route on map ──────────────────────────────────────────────
-  const renderRoute = useCallback(async (blob: Blob) => {
-    const map = mapRef.current;
-    if (!map || !map.loaded()) return;
-
-    const text = await blob.text();
-    const geojson = gpxToGeoJson(text);
-
-    const source = map.getSource("route") as GeoJSONSource | undefined;
-    if (source) {
-      source.setData(geojson);
-    }
-
-    // Fit map to the route bounding box
-    const coords = (geojson.features[0]?.geometry as GeoJSON.LineString)?.coordinates;
-    if (coords && coords.length > 0) {
-      const lons = coords.map((c) => c[0]);
-      const lats = coords.map((c) => c[1]);
-      map.fitBounds(
-        [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-        { padding: 60, duration: 1000 }
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!gpxBlob) {
-      // Clear route
-      const map = mapRef.current;
-      if (!map || !map.loaded()) return;
-      const source = map.getSource("route") as GeoJSONSource | undefined;
-      source?.setData({ type: "FeatureCollection", features: [] });
-      return;
-    }
-    renderRoute(gpxBlob);
-  }, [gpxBlob, renderRoute]);
-
-  return <div ref={containerRef} style={{ width: "100%", height: "600px" }} />;
+  return (
+    <div
+      ref={containerRef}
+      style={{ width: "100%", height: "100%", minHeight: "500px", position: "relative" }}
+    />
+  );
 }

@@ -120,37 +120,32 @@ async def generate_route(body: RouteRequest, request: Request):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _generate_loop(client: httpx.AsyncClient, body: RouteRequest) -> bytes:
-    """Call GraphHopper with algorithm=round_trip to generate a loop route."""
+    """Call GraphHopper with algorithm=round_trip via GET to generate a loop route."""
     gh_profile = GRAPHHOPPER_PROFILE_MAP.get(body.profile)
     if not gh_profile:
         raise HTTPException(400, detail=f"Profile '{body.profile}' not supported for loop routing")
 
-    payload: dict = {
-        "points":               [[body.start_lon, body.start_lat]],
-        "algorithm":            "round_trip",
-        "round_trip.distance":  int(body.distance_km * 1000),  # GH expects meters
-        "round_trip.seed":      body.seed or 42,
-        "ch.disable":           True,   # Required for round_trip algorithm
-        "profile":              "gravel",
-        "points_encoded":       False,
-        "locale":               "fr",
+    params: dict = {
+        "point":               f"{body.start_lat},{body.start_lon}",  # GET = lat,lon (inverse du POST)
+        "algorithm":           "round_trip",
+        "round_trip.distance": int(body.distance_km * 1000),
+        "round_trip.seed":     body.seed or 42,
+        "ch.disable":          "true",
+        "profile":             gh_profile,
+        "points_encoded":      "false",
+        "locale":              "fr",
     }
 
     if body.direction_deg is not None:
-        payload["headings"]          = [body.direction_deg]
-        payload["heading_penalty"]   = 120
-        payload["pass_through"]      = False
+        params["heading"]         = body.direction_deg
+        params["heading_penalty"] = 120
+        params["pass_through"]    = "false"
 
-    # GraphHopper GPX export
     if body.format == "gpx":
-        payload["type"] = "gpx"
+        params["type"] = "gpx"
 
     try:
-        resp = await client.post(
-            f"{GRAPHHOPPER_URL}/route",
-            json=payload,
-            headers={"Content-Type": "application/json"},
-        )
+        resp = await client.get(f"{GRAPHHOPPER_URL}/route", params=params)
         resp.raise_for_status()
     except httpx.HTTPStatusError as e:
         detail = f"GraphHopper error: {e.response.text}"
@@ -158,10 +153,7 @@ async def _generate_loop(client: httpx.AsyncClient, body: RouteRequest) -> bytes
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"GraphHopper unavailable: {e}")
 
-    print(resp.json())
-
     return resp.content
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # A-to-B routing via BRouter
@@ -178,7 +170,7 @@ async def _generate_point_to_point(client: httpx.AsyncClient, body: RouteRequest
 
     params = {
         "lonlats":        lonlats,
-        "profile":        "gravel",
+        "profile":        brf_profile,
         "alternativeidx": 0,
         "format":         fmt,
     }
