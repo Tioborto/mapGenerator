@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 
 const MapView = dynamic(() => import("./components/MapView"), {
@@ -81,12 +81,13 @@ export default function Home() {
   const [endSuggestions, setEndSuggestions] = useState<GeocodingResult[]>([]);
   const [showEndSuggestions, setShowEndSuggestions] = useState(false);
 
-  // Route result
+  // Route result & Picking state
+  const [isPickingCoord, setIsPickingCoord] = useState(false);
+  const [gpxText, setGpxText] = useState<string | null>(null);
   const [gpxBlob, setGpxBlob] = useState<Blob | null>(null);
   const [routeStats, setRouteStats] = useState<RouteStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isPickingCoord, setIsPickingCoord] = useState(false);
 
   const geocodeTimer = useRef<NodeJS.Timeout | null>(null);
   const endGeoTimer = useRef<NodeJS.Timeout | null>(null);
@@ -159,6 +160,7 @@ export default function Home() {
 
     setIsLoading(true);
     setError(null);
+    setGpxText(null);
     setGpxBlob(null);
     setRouteStats(null);
 
@@ -192,10 +194,11 @@ export default function Home() {
       }
 
       const blob = await res.blob();
-      setGpxBlob(blob);
-
-      // Parse basic stats from GPX
       const text = await blob.text();
+
+      setGpxBlob(blob);
+      setGpxText(text);
+
       const stats = parseGpxStats(text);
       setRouteStats(stats);
 
@@ -219,6 +222,12 @@ export default function Home() {
 
   const canGenerate = !!startCoord && (mode === "loop" || !!endCoord) && !isLoading;
   const activeProfile = PROFILES.find((p) => p.id === profile)!;
+
+  // Safe TS type narrowing for stats
+  const stats = routeStats;
+  const displayDistance = stats ? stats.distanceKm.toFixed(1) : "0.0";
+  const displayElevation = stats ? stats.elevationGain : 0;
+  const displayTime = stats ? stats.time : "--";
 
   return (
     <main className="app-layout">
@@ -452,20 +461,22 @@ export default function Home() {
           </button>
 
           {/* ── Route Stats ── */}
-          {routeStats && (
+          {stats && (
             <div className="route-stats">
-              <p className="section-label" style={{ marginBottom: 10 }}>Route Summary</p>
+              <p className="section-label" style={{ marginBottom: "10px" }}>
+                Route Summary
+              </p>
               <div className="route-stats-grid">
                 <div className="stat-item">
-                  <span className="stat-value">{routeStats.distanceKm.toFixed(1)}</span>
+                  <span className="stat-value">{displayDistance}</span>
                   <span className="stat-label">km</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-value">{routeStats.elevationGain}</span>
+                  <span className="stat-value">{displayElevation}</span>
                   <span className="stat-label">m gain</span>
                 </div>
                 <div className="stat-item">
-                  <span className="stat-value">{routeStats.time}</span>
+                  <span className="stat-value">{displayTime}</span>
                   <span className="stat-label">est. time</span>
                 </div>
               </div>
@@ -481,13 +492,12 @@ export default function Home() {
         </div>
       </aside>
 
-
       {/* ── Map ── */}
       <div className="map-container">
         <MapView
           onMapClick={isPickingCoord ? handleMapClick : undefined}
           startCoord={startCoord}
-          gpxBlob={gpxBlob}
+          gpxData={gpxText}
           isClickMode={isPickingCoord}
         />
 
@@ -512,44 +522,81 @@ export default function Home() {
 // GPX stats parser
 // ─────────────────────────────────────────────────────────────────────────────
 
-function parseGpxStats(gpxText: string): RouteStats {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(gpxText, "application/xml");
-  const trkpts = doc.querySelectorAll("trkpt");
+function parseGpxStats(gpxText: string): RouteStats | null {
+  try {
+    interface Point { lat: number; lon: number; ele: number | null; }
+    const points: Point[] = [];
 
-  let totalDist = 0;
-  let elevGain = 0;
-  let prevLat: number | null = null;
-  let prevLon: number | null = null;
-  let prevEle: number | null = null;
+    // Regex extraction for trkpt/rtept elements with lat, lon, and optional ele
+    const trkptRegex = /<(?:[\w:]*:)?(?:trkpt|rtept)\b[^>]*?(?:lat="([^"]+)"[^>]*?lon="([^"]+)"|lon="([^"]+)"[^>]*?lat="([^"]+)")[\s\S]*?<\/(?:[\w:]*:)?(?:trkpt|rtept)>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = trkptRegex.exec(gpxText)) !== null) {
+      const fullTag = match[0];
+      const lat = parseFloat(match[1] ?? match[4]);
+      const lon = parseFloat(match[2] ?? match[3]);
 
-  trkpts.forEach((pt) => {
-    const lat = parseFloat(pt.getAttribute("lat") || "0");
-    const lon = parseFloat(pt.getAttribute("lon") || "0");
-    const ele = parseFloat(pt.querySelector("ele")?.textContent || "0");
+      const eleMatch = /<(?:[\w:]*:)?ele>([^<]+)<\/(?:[\w:]*:)?ele>/i.exec(fullTag);
+      const ele = eleMatch ? parseFloat(eleMatch[1]) : null;
 
-    if (prevLat !== null && prevLon !== null) {
-      totalDist += haversineKm(prevLat, prevLon, lat, lon);
-    }
-    if (prevEle !== null && ele > prevEle) {
-      elevGain += ele - prevEle;
+      if (!isNaN(lat) && !isNaN(lon)) {
+        points.push({ lat, lon, ele: ele && !isNaN(ele) ? ele : null });
+      }
     }
 
-    prevLat = lat; prevLon = lon; prevEle = ele;
-  });
+    // Fallback if regex matched no blocks
+    if (points.length === 0 && typeof DOMParser !== "undefined") {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(gpxText, "text/xml");
+      const allEls = Array.from(doc.getElementsByTagName("*"));
+      const pts = allEls.filter((el) => {
+        const name = el.localName?.toLowerCase();
+        return name === "trkpt" || name === "rtept";
+      });
+      pts.forEach((pt) => {
+        const lat = parseFloat(pt.getAttribute("lat") || "");
+        const lon = parseFloat(pt.getAttribute("lon") || "");
+        const eleEl = Array.from(pt.children).find((c) => c.localName?.toLowerCase() === "ele");
+        const ele = eleEl ? parseFloat(eleEl.textContent || "") : null;
+        if (!isNaN(lat) && !isNaN(lon)) {
+          points.push({ lat, lon, ele: ele && !isNaN(ele) ? ele : null });
+        }
+      });
+    }
 
-  // Rough time estimate (minutes per km by activity — simplified)
-  const minsPerKm = 8; // conservative default
-  const totalMins = Math.round(totalDist * minsPerKm);
-  const h = Math.floor(totalMins / 60);
-  const m = totalMins % 60;
-  const time = h > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${m}min`;
+    if (points.length === 0) return null;
 
-  return {
-    distanceKm: Math.round(totalDist * 10) / 10,
-    elevationGain: Math.round(elevGain),
-    time,
-  };
+    let totalDist = 0;
+    let elevGain = 0;
+    let prevLat: number | null = null;
+    let prevLon: number | null = null;
+    let prevEle: number | null = null;
+
+    points.forEach(({ lat, lon, ele }) => {
+      if (prevLat !== null && prevLon !== null) {
+        totalDist += haversineKm(prevLat, prevLon, lat, lon);
+      }
+      if (prevEle !== null && ele !== null && ele > prevEle) {
+        elevGain += ele - prevEle;
+      }
+      prevLat = lat;
+      prevLon = lon;
+      if (ele !== null) prevEle = ele;
+    });
+
+    const minsPerKm = 8; // conservative average
+    const totalMins = Math.round(totalDist * minsPerKm);
+    const h = Math.floor(totalMins / 60);
+    const m = totalMins % 60;
+    const time = h > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${m}min`;
+
+    return {
+      distanceKm: Math.round(totalDist * 10) / 10,
+      elevationGain: Math.round(elevGain),
+      time,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {

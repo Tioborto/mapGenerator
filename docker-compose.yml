@@ -5,14 +5,14 @@ services:
   # ─────────────────────────────────────────────
   brouter:
     build:
-      context: ./brouter
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: brouter/Dockerfile
     container_name: mapgenerator-brouter
     ports:
       - "17777:17777"
     volumes:
       - ./segments4:/segments4
-    #  - ./profiles:/customprofiles
+      - ./profiles:/customprofiles
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:17777/brouter?lonlats=2.3,48.8|2.4,48.9&profile=gravel&format=geojson" ]

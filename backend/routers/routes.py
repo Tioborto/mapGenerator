@@ -112,7 +112,7 @@ async def generate_route(body: RouteRequest, request: Request):
             headers={"Content-Disposition": 'attachment; filename="route.gpx"'},
         )
     else:
-        return Response(content=gpx_data, media_type="application/json")
+        return Response(content=gpx_data, media_type="application/gpx.xml")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
