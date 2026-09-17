@@ -48,11 +48,11 @@ PROFILES: list[Profile] = [
 ]
 
 # Map profile ID → BRouter .brf filename (without extension)
-BROUTER_PROFILE_MAP: dict[str, str] = {
+BROUTER_PROFILE_MAP = {
+    "road_running": "road-running",
     "trail_running": "trail-running",
-    "road_running":  "road-running",
-    "hiking":        "hiking",
-    "cycling":       "cycling",
+    "hiking": "hiking",
+    "cycling": "cycling",
 }
 
 # Map profile ID → GraphHopper profile name (as defined in config.yml)

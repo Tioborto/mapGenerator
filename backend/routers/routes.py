@@ -120,68 +120,97 @@ async def generate_route(body: RouteRequest, request: Request):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _generate_loop(client: httpx.AsyncClient, body: RouteRequest) -> bytes:
-    """Call GraphHopper with algorithm=round_trip via GET to generate a loop route."""
     gh_profile = GRAPHHOPPER_PROFILE_MAP.get(body.profile)
     if not gh_profile:
-        raise HTTPException(400, detail=f"Profile '{body.profile}' not supported for loop routing")
+        raise HTTPException(400, detail=f"Profile '{body.profile}' not supported")
 
+    start_lat = float(body.start_lat)
+    start_lon = float(body.start_lon)
+
+    # 1. Ask GraphHopper for full JSON track geometry (type=json)
     params: dict = {
-        "point":               f"{body.start_lat},{body.start_lon}",  # GET = lat,lon (inverse du POST)
+        "point":               f"{start_lat},{start_lon}",
         "algorithm":           "round_trip",
         "round_trip.distance": int(body.distance_km * 1000),
         "round_trip.seed":     body.seed or 42,
         "ch.disable":          "true",
         "profile":             gh_profile,
-        "points_encoded":      "false",
+        "points_encoded":      "false",  # Returns raw [lon, lat] arrays
+        "type":                "json",   # Getting full JSON ensures complete road geometry
         "locale":              "fr",
     }
 
     if body.direction_deg is not None:
-        params["heading"]         = body.direction_deg
+        params["heading"]         = int(body.direction_deg)
         params["heading_penalty"] = 120
-        params["pass_through"]    = "false"
-
-    if body.format == "gpx":
-        params["type"] = "gpx"
 
     try:
         resp = await client.get(f"{GRAPHHOPPER_URL}/route", params=params)
         resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        detail = f"GraphHopper error: {e.response.text}"
-        raise HTTPException(status_code=502, detail=detail)
+        data = resp.json()
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"GraphHopper unavailable: {e}")
+        raise HTTPException(status_code=502, detail=f"GraphHopper error: {e}")
 
-    return resp.content
+    # Extract detailed route points
+    paths = data.get("paths", [])
+    if not paths:
+        raise HTTPException(400, detail="No route found for these parameters")
+
+    points = paths[0]["points"]["coordinates"]  # Array of [lon, lat] or [lon, lat, ele]
+
+    # 2. Convert points to standard GPX XML
+    gpx_xml = build_gpx_from_points(points)
+    return gpx_xml.encode("utf-8")
+
+
+def build_gpx_from_points(points: list[list[float]]) -> str:
+    """Converts [[lon, lat, ele?], ...] coordinates into a standard GPX XML string."""
+    trkpts = []
+    for pt in points:
+        lon, lat = pt[0], pt[1]
+        ele_tag = f"<ele>{pt[2]}</ele>" if len(pt) > 2 else ""
+        trkpts.append(f'      <trkpt lat="{lat}" lon="{lon}">{ele_tag}</trkpt>')
+
+    trkpts_str = "\n".join(trkpts)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="MapGenerator">
+  <trk>
+    <name>Generated Loop</name>
+    <trkseg>
+{trkpts_str}
+    </trkseg>
+  </trk>
+</gpx>"""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # A-to-B routing via BRouter
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _generate_point_to_point(client: httpx.AsyncClient, body: RouteRequest) -> bytes:
-    """Call BRouter to generate an A-to-B route with the selected .brf profile."""
-    brf_profile = BROUTER_PROFILE_MAP.get(body.profile)
-    if not brf_profile:
-        raise HTTPException(400, detail=f"Profile '{body.profile}' not supported for A-to-B routing")
+    # Récupère le profil BRouter valide (fallback sur 'foot' si inconnu)
+    brouter_profile = BROUTER_PROFILE_MAP.get(body.profile, "foot")
 
-    lonlats = f"{body.start_lon},{body.start_lat}|{body.end_lon},{body.end_lat}"
-    fmt = "gpx" if body.format == "gpx" else "geojson"
+    start_lon = f"{float(body.start_lon):.6f}"
+    start_lat = f"{float(body.start_lat):.6f}"
+    end_lon = f"{float(body.end_lon):.6f}"
+    end_lat = f"{float(body.end_lat):.6f}"
+
+    lonlats = f"{start_lon},{start_lat}|{end_lon},{end_lat}"
 
     params = {
-        "lonlats":        lonlats,
-        "profile":        brf_profile,
-        "alternativeidx": 0,
-        "format":         fmt,
+        "lonlats": lonlats,
+        "profile": brouter_profile,  # Enverra "foot" au lieu de "road-running"
+        "format": "gpx",
     }
 
     try:
-        resp = await client.get(f"{BROUTER_URL}/brouter", params=params)
+        resp = await client.get(f"{BROUTER_URL}/brouter", params=params, timeout=10.0)
         resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        detail = f"BRouter error: {e.response.text}"
-        raise HTTPException(status_code=502, detail=detail)
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"BRouter unavailable: {e}")
+        return resp.content
 
-    return resp.content
+    except httpx.HTTPStatusError as e:
+        print(f"BRouter API Error ({e.response.status_code}): {e.response.text}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Erreur de routage BRouter: {e.response.text}"
+        )

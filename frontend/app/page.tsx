@@ -141,7 +141,6 @@ export default function Home() {
 
   // ── Map click (coordinate picking) ─────────────────────────────────────
   const handleMapClick = useCallback((coord: Coordinate) => {
-    console.log("handleMapClick appelé avec:", coord);
     setStartCoord(coord);
     setAddressQuery(`${coord.lat.toFixed(5)}, ${coord.lon.toFixed(5)}`);
     setIsPickingCoord(false);
@@ -524,46 +523,11 @@ export default function Home() {
 
 function parseGpxStats(gpxText: string): RouteStats | null {
   try {
-    interface Point { lat: number; lon: number; ele: number | null; }
-    const points: Point[] = [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(gpxText, "application/xml");
+    const trkpts = doc.querySelectorAll("trkpt, rtept");
 
-    // Regex extraction for trkpt/rtept elements with lat, lon, and optional ele
-    const trkptRegex = /<(?:[\w:]*:)?(?:trkpt|rtept)\b[^>]*?(?:lat="([^"]+)"[^>]*?lon="([^"]+)"|lon="([^"]+)"[^>]*?lat="([^"]+)")[\s\S]*?<\/(?:[\w:]*:)?(?:trkpt|rtept)>/gi;
-    let match: RegExpExecArray | null;
-    while ((match = trkptRegex.exec(gpxText)) !== null) {
-      const fullTag = match[0];
-      const lat = parseFloat(match[1] ?? match[4]);
-      const lon = parseFloat(match[2] ?? match[3]);
-
-      const eleMatch = /<(?:[\w:]*:)?ele>([^<]+)<\/(?:[\w:]*:)?ele>/i.exec(fullTag);
-      const ele = eleMatch ? parseFloat(eleMatch[1]) : null;
-
-      if (!isNaN(lat) && !isNaN(lon)) {
-        points.push({ lat, lon, ele: ele && !isNaN(ele) ? ele : null });
-      }
-    }
-
-    // Fallback if regex matched no blocks
-    if (points.length === 0 && typeof DOMParser !== "undefined") {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(gpxText, "text/xml");
-      const allEls = Array.from(doc.getElementsByTagName("*"));
-      const pts = allEls.filter((el) => {
-        const name = el.localName?.toLowerCase();
-        return name === "trkpt" || name === "rtept";
-      });
-      pts.forEach((pt) => {
-        const lat = parseFloat(pt.getAttribute("lat") || "");
-        const lon = parseFloat(pt.getAttribute("lon") || "");
-        const eleEl = Array.from(pt.children).find((c) => c.localName?.toLowerCase() === "ele");
-        const ele = eleEl ? parseFloat(eleEl.textContent || "") : null;
-        if (!isNaN(lat) && !isNaN(lon)) {
-          points.push({ lat, lon, ele: ele && !isNaN(ele) ? ele : null });
-        }
-      });
-    }
-
-    if (points.length === 0) return null;
+    if (!trkpts || trkpts.length === 0) return null;
 
     let totalDist = 0;
     let elevGain = 0;
@@ -571,19 +535,38 @@ function parseGpxStats(gpxText: string): RouteStats | null {
     let prevLon: number | null = null;
     let prevEle: number | null = null;
 
-    points.forEach(({ lat, lon, ele }) => {
+    trkpts.forEach((pt) => {
+      const lat = parseFloat(pt.getAttribute("lat") || "0");
+      const lon = parseFloat(pt.getAttribute("lon") || "0");
+
+      // Extraction de l'altitude (<ele> ou <elevation>)
+      const eleNode = pt.querySelector("ele, elevation");
+      const ele = eleNode && eleNode.textContent ? parseFloat(eleNode.textContent) : null;
+
       if (prevLat !== null && prevLon !== null) {
-        totalDist += haversineKm(prevLat, prevLon, lat, lon);
+        const d = haversineKm(prevLat, prevLon, lat, lon);
+
+        // Filtre les faux sauts de distance (points trop proches ou doublons)
+        if (d > 0.001) {
+          totalDist += d;
+        }
       }
-      if (prevEle !== null && ele !== null && ele > prevEle) {
-        elevGain += ele - prevEle;
+
+      // Calcul du dénivelé positif cumule
+      if (prevEle !== null && ele !== null && !isNaN(ele)) {
+        const diff = ele - prevEle;
+        // On ne compte que les montées significatives (> 0.5m) pour éviter le bruit
+        if (diff > 0.5) {
+          elevGain += diff;
+        }
       }
+
       prevLat = lat;
       prevLon = lon;
-      if (ele !== null) prevEle = ele;
+      if (ele !== null && !isNaN(ele)) prevEle = ele;
     });
 
-    const minsPerKm = 8; // conservative average
+    const minsPerKm = 8;
     const totalMins = Math.round(totalDist * minsPerKm);
     const h = Math.floor(totalMins / 60);
     const m = totalMins % 60;
