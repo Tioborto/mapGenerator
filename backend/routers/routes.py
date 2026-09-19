@@ -18,6 +18,7 @@ import httpx
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
+from opentelemetry import trace
 
 from routers.profiles import BROUTER_PROFILE_MAP, GRAPHHOPPER_PROFILE_MAP
 
@@ -87,6 +88,7 @@ class RouteRequest(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/routes")
+@trace.get_tracer(__name__).start_as_current_span("generate_route")
 async def generate_route(body: RouteRequest, request: Request):
     """
     Generate a GPX route file based on activity profile and route settings.
@@ -94,15 +96,20 @@ async def generate_route(body: RouteRequest, request: Request):
     - **loop** mode: uses GraphHopper's native round_trip algorithm.
     - **point_to_point** mode: uses BRouter with the selected .brf profile.
     """
+    span = trace.get_current_span()
+    span.set_attribute("body", body.model_dump_json())
+
     client: httpx.AsyncClient = request.app.state.http_client
 
     if body.mode == RouteMode.loop:
         if not body.distance_km:
             raise HTTPException(400, detail="distance_km is required for loop mode")
+        span.add_event("loop mode selected")
         gpx_data = await _generate_loop(client, body)
     else:
         if body.end_lon is None or body.end_lat is None:
             raise HTTPException(400, detail="end_lon and end_lat are required for point_to_point mode")
+        span.add_event("point-to-point mode selected")
         gpx_data = await _generate_point_to_point(client, body)
 
     if body.format == "gpx":

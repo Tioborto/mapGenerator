@@ -4,10 +4,15 @@ Orchestrates BRouter (A-to-B routing) and GraphHopper (loop routing)
 to generate GPX files from user settings.
 """
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import httpx
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from routers import routes, geocoding, profiles
 
@@ -22,6 +27,14 @@ async def lifespan(app: FastAPI):
     yield
     await app.state.http_client.aclose()
 
+# Initialize OpenTelemetry
+trace.set_tracer_provider(TracerProvider())
+tracer = trace.get_tracer(__name__)
+
+# Set up OTLP exporter
+otlp_exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317")
+span_processor = BatchSpanProcessor(otlp_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # App
@@ -33,6 +46,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
 
 app.add_middleware(
     CORSMiddleware,
