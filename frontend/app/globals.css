@@ -5,52 +5,55 @@
 /* ─────────────────────────────────────────────────────────────────────────── */
 :root {
   /* Colors */
-  --color-bg:          #0a0f1a;
+  --color-bg: #0a0f1a;
   --color-bg-elevated: #0f1625;
-  --color-surface:     rgba(15, 25, 45, 0.85);
-  --color-border:      rgba(99, 179, 237, 0.12);
-  --color-border-hover:rgba(99, 179, 237, 0.3);
+  --color-surface: rgba(15, 25, 45, 0.85);
+  --color-border: rgba(99, 179, 237, 0.12);
+  --color-border-hover: rgba(99, 179, 237, 0.3);
 
-  --color-accent:      #4f9cf9;
+  --color-accent: #4f9cf9;
   --color-accent-glow: rgba(79, 156, 249, 0.25);
   --color-accent-dark: #1a6fd4;
-  --color-success:     #48bb78;
-  --color-warning:     #f6ad55;
-  --color-danger:      #fc8181;
+  --color-success: #48bb78;
+  --color-warning: #f6ad55;
+  --color-danger: #fc8181;
 
-  --color-text-primary:   #e8f0fe;
+  --color-text-primary: #e8f0fe;
   --color-text-secondary: #7c8db5;
-  --color-text-muted:     #4a5780;
+  --color-text-muted: #4a5780;
 
   /* Profiles */
-  --profile-trail:   #48bb78;
-  --profile-road:    #4f9cf9;
-  --profile-hiking:  #f6ad55;
+  --profile-trail: #48bb78;
+  --profile-road: #4f9cf9;
+  --profile-hiking: #f6ad55;
   --profile-cycling: #b794f4;
 
   /* Spacing */
   --panel-width: 380px;
-  --radius-sm:   6px;
-  --radius-md:   12px;
-  --radius-lg:   20px;
-  --radius-xl:   28px;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
 
   /* Glassmorphism */
-  --glass-bg:     rgba(10, 20, 40, 0.75);
-  --glass-blur:   blur(20px);
+  --glass-bg: rgba(10, 20, 40, 0.75);
+  --glass-blur: blur(20px);
   --glass-border: 1px solid rgba(99, 179, 237, 0.12);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Reset & Base                                                                */
 /* ─────────────────────────────────────────────────────────────────────────── */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   font-family: 'Outfit', system-ui, sans-serif;
   background: var(--color-bg);
@@ -98,7 +101,7 @@ html, body {
   backdrop-filter: var(--glass-blur);
   border: var(--glass-border) !important;
   border-radius: var(--radius-md) !important;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4) !important;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4) !important;
   overflow: hidden;
 }
 
@@ -133,9 +136,18 @@ html, body {
   scrollbar-color: var(--color-border) transparent;
 }
 
-.side-panel::-webkit-scrollbar { width: 4px; }
-.side-panel::-webkit-scrollbar-track { background: transparent; }
-.side-panel::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 2px; }
+.side-panel::-webkit-scrollbar {
+  width: 4px;
+}
+
+.side-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.side-panel::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Panel Header                                                                */
@@ -221,7 +233,10 @@ html, body {
   transition: all 0.2s ease;
 }
 
-.address-input::placeholder { color: var(--color-text-muted); }
+.address-input::placeholder {
+  color: var(--color-text-muted);
+}
+
 .address-input:focus {
   border-color: var(--color-accent);
   background: rgba(79, 156, 249, 0.06);
@@ -254,8 +269,15 @@ html, body {
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .autocomplete-item {
@@ -263,21 +285,32 @@ html, body {
   cursor: pointer;
   font-size: 13px;
   color: var(--color-text-secondary);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   transition: all 0.15s ease;
   display: flex;
   gap: 8px;
   align-items: flex-start;
 }
 
-.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
 .autocomplete-item:hover {
   background: rgba(79, 156, 249, 0.08);
   color: var(--color-text-primary);
 }
 
-.autocomplete-item-icon { color: var(--color-accent); flex-shrink: 0; margin-top: 1px; }
-.autocomplete-item-text { flex: 1; line-height: 1.4; }
+.autocomplete-item-icon {
+  color: var(--color-accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.autocomplete-item-text {
+  flex: 1;
+  line-height: 1.4;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Profile Cards                                                               */
@@ -291,7 +324,7 @@ html, body {
 .profile-card {
   padding: 12px 10px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
@@ -305,7 +338,7 @@ html, body {
 
 .profile-card:hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255,255,255,0.12);
+  border-color: rgba(255, 255, 255, 0.12);
   transform: translateY(-1px);
 }
 
@@ -315,16 +348,28 @@ html, body {
   box-shadow: 0 0 16px color-mix(in srgb, var(--profile-color, var(--color-accent)) 20%, transparent);
 }
 
-.profile-icon { font-size: 22px; line-height: 1; }
-.profile-name { font-size: 11px; font-weight: 600; color: var(--color-text-secondary); letter-spacing: 0.2px; }
-.profile-card.active .profile-name { color: var(--color-text-primary); }
+.profile-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.profile-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.2px;
+}
+
+.profile-card.active .profile-name {
+  color: var(--color-text-primary);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Mode Toggle                                                                 */
 /* ─────────────────────────────────────────────────────────────────────────── */
 .mode-toggle {
   display: flex;
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   border: var(--glass-border);
   border-radius: var(--radius-md);
   padding: 3px;
@@ -356,7 +401,7 @@ html, body {
 }
 
 .mode-btn:hover:not(.active) {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--color-text-secondary);
 }
 
@@ -397,7 +442,7 @@ html, body {
   appearance: none;
   width: 100%;
   height: 4px;
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
   outline: none;
   cursor: pointer;
@@ -413,7 +458,10 @@ html, body {
   transition: transform 0.15s ease;
 }
 
-.range-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+.range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
 .range-slider::-moz-range-thumb {
   width: 16px;
   height: 16px;
@@ -427,7 +475,7 @@ html, body {
 .direction-select {
   width: 100%;
   padding: 9px 12px;
-  background: rgba(255,255,255,0.04);
+  background: rgba(255, 255, 255, 0.04);
   border: var(--glass-border);
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
@@ -448,7 +496,9 @@ html, body {
   box-shadow: 0 0 0 3px var(--color-accent-glow);
 }
 
-.direction-select option { background: var(--color-bg-elevated); }
+.direction-select option {
+  background: var(--color-bg-elevated);
+}
 
 /* Second address input for A-to-B mode */
 .endpoint-input {
@@ -464,7 +514,10 @@ html, body {
   transition: all 0.2s ease;
 }
 
-.endpoint-input::placeholder { color: var(--color-text-muted); }
+.endpoint-input::placeholder {
+  color: var(--color-text-muted);
+}
+
 .endpoint-input:focus {
   border-color: var(--color-success);
   background: rgba(72, 187, 120, 0.06);
@@ -499,7 +552,9 @@ html, body {
   box-shadow: 0 8px 30px var(--color-accent-glow);
 }
 
-.generate-btn:active:not(:disabled) { transform: translateY(0); }
+.generate-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
 
 .generate-btn:disabled {
   opacity: 0.5;
@@ -513,11 +568,16 @@ html, body {
 }
 
 /* Spinner */
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255,255,255,0.3);
+  border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -535,8 +595,15 @@ html, body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .route-stats-grid {
@@ -637,7 +704,7 @@ html, body {
   color: var(--color-text-secondary);
   pointer-events: none;
   white-space: nowrap;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -649,7 +716,37 @@ html, body {
 /* Map Marker Pulse                                                            */
 /* ─────────────────────────────────────────────────────────────────────────── */
 @keyframes pulse {
-  0%   { transform: scale(1);   opacity: 1; }
-  70%  { transform: scale(1.8); opacity: 0; }
-  100% { transform: scale(1.8); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  70% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Elevation chart                                                             */
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* labels: "Distance:", "Ascent:", ... */
+.elevation-control .elevation-summary .summarylabel {
+  color: #0f1625;
+}
+
+/* values: "12.3 km", "450 m", ... */
+.elevation-control .elevation-summary .summaryvalue {
+  color: #1a3a5c;
+  font-weight: 600;
+}
+
+/* the summary bar itself */
+.elevation-control .elevation-summary {
+  color: #0f1625;
 }

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
+import { addElevationToGpx } from "./lib/addElevationToGpx";
 
 const MapView = dynamic(() => import("./components/MapView"), {
   ssr: false,
@@ -163,6 +164,8 @@ export default function Home() {
     setGpxBlob(null);
     setRouteStats(null);
 
+
+
     try {
       const body: Record<string, unknown> = {
         start_lon: startCoord.lon,
@@ -193,13 +196,16 @@ export default function Home() {
       }
 
       const blob = await res.blob();
-      const text = await blob.text();
+      let text = await blob.text();
 
-      setGpxBlob(blob);
+      // Fill in missing elevations so the chart, stats and download all have them
+      if (!/<(?:[\w:]*:)?ele>\s*-?\d/.test(text)) {
+        text = await addElevationToGpx(text);
+      }
+
+      setGpxBlob(new Blob([text], { type: "application/gpx+xml" }));
       setGpxText(text);
-
-      const stats = parseGpxStats(text);
-      setRouteStats(stats);
+      setRouteStats(parseGpxStats(text));
 
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "An unexpected error occurred.");
@@ -523,6 +529,47 @@ export default function Home() {
 
 function parseGpxStats(gpxText: string): RouteStats | null {
   try {
+    // 1. First attempt to parse BRouter XML Header Comments
+    const commentMatch = gpxText.match(
+      /<!--\s*track-length\s*=\s*(\d+)\s+filtered ascend\s*=\s*(\d+)(?:.*?time\s*=\s*([^->]+))?/
+    );
+
+    if (commentMatch) {
+      const distanceMeters = parseInt(commentMatch[1], 10);
+      const elevationGain = parseInt(commentMatch[2], 10);
+      const rawTime = commentMatch[3] ? commentMatch[3].trim() : null;
+
+      const distanceKm = Math.round((distanceMeters / 1000) * 10) / 10;
+
+      // Convert BRouter time string (e.g., "7m 30s", "1h 15m") into clean format ("7min", "1h15")
+      let timeFormatted = "";
+      if (rawTime) {
+        const hoursMatch = rawTime.match(/(\d+)h/);
+        const minsMatch = rawTime.match(/(\d+)m/);
+        const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+        const mins = minsMatch ? parseInt(minsMatch[1], 10) : 0;
+
+        if (hours > 0) {
+          timeFormatted = `${hours}h${mins.toString().padStart(2, "0")}`;
+        } else {
+          timeFormatted = `${mins}min`;
+        }
+      } else {
+        // Fallback estimated time based on distance if time field is omitted
+        const totalMins = Math.round(distanceKm * 8);
+        const h = Math.floor(totalMins / 60);
+        const m = totalMins % 60;
+        timeFormatted = h > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${m}min`;
+      }
+
+      return {
+        distanceKm,
+        elevationGain,
+        time: timeFormatted,
+      };
+    }
+
+    // 2. Fallback to coordinate-based calculation (For GraphHopper or generic GPX)
     const parser = new DOMParser();
     const doc = parser.parseFromString(gpxText, "application/xml");
     const trkpts = doc.querySelectorAll("trkpt, rtept");
@@ -539,23 +586,18 @@ function parseGpxStats(gpxText: string): RouteStats | null {
       const lat = parseFloat(pt.getAttribute("lat") || "0");
       const lon = parseFloat(pt.getAttribute("lon") || "0");
 
-      // Extraction de l'altitude (<ele> ou <elevation>)
       const eleNode = pt.querySelector("ele, elevation");
       const ele = eleNode && eleNode.textContent ? parseFloat(eleNode.textContent) : null;
 
       if (prevLat !== null && prevLon !== null) {
         const d = haversineKm(prevLat, prevLon, lat, lon);
-
-        // Filtre les faux sauts de distance (points trop proches ou doublons)
         if (d > 0.001) {
           totalDist += d;
         }
       }
 
-      // Calcul du dénivelé positif cumule
       if (prevEle !== null && ele !== null && !isNaN(ele)) {
         const diff = ele - prevEle;
-        // On ne compte que les montées significatives (> 0.5m) pour éviter le bruit
         if (diff > 0.5) {
           elevGain += diff;
         }

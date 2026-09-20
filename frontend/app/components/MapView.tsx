@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet-gpx";
+import { loadMapPlugins } from '../lib/loadMapPlugins';
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Type extension for leaflet-gpx plugin
@@ -138,33 +140,68 @@ export default function MapView({
 
     if (!gpxData) return;
 
-    // Blank transparent pixel data-URI to prevent 404 network calls
-    const emptyIconUrl = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    console.log('GPX has <ele>:', /<ele>\s*-?\d/.test(gpxData));
 
-    const gpxLayer = new L.GPX(gpxData, {
-      async: true,
-      marker_options: {
-        startIconUrl: emptyIconUrl,
-        endIconUrl: emptyIconUrl,
-        shadowUrl: emptyIconUrl,
-        wptIconUrls: { "": emptyIconUrl },
-      },
-      polyline_options: {
-        color: "#ff0000",
-        weight: 5,
-        opacity: 0.9,
-        lineCap: "round",
-        lineJoin: "round",
-      },
+    let cancelled = false;
+    let cleanup = () => { };
+    loadMapPlugins().then((WL: typeof L) => {
+
+      // Blank transparent pixel data-URI to prevent 404 network calls
+      const emptyIconUrl = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+      const elevation = (WL.control as any)
+        .elevation({
+          position: 'bottomright',
+          theme: 'lightblue-theme',
+          detached: false,      // render as a Leaflet control inside the map
+          collapsed: false,
+          autohide: false,
+          waypoints: false,
+          width: 500,           // default is wider than a small map
+          height: 150,
+          distanceMarkers: true,
+          closeBtn: true
+        })
+        .addTo(map);
+      elevation.on('eledata_loaded', () => console.log('[elevation] data loaded'));
+      elevation.load(gpxData);
+
+      const gpxLayer = new L.GPX(gpxData, {
+        async: true,
+        marker_options: {
+          startIconUrl: emptyIconUrl,
+          endIconUrl: emptyIconUrl,
+          shadowUrl: emptyIconUrl,
+          wptIconUrls: { "": emptyIconUrl },
+        },
+        polyline_options: {
+          color: "#ff0000",
+          weight: 5,
+          opacity: 0.9,
+          lineCap: "round",
+          lineJoin: "round",
+        },
+      });
+
+      gpxLayer.on("loaded", (e: { target: L.GPX }) => {
+        map.fitBounds(e.target.getBounds(), { padding: [50, 50] });
+      });
+
+      gpxLayer.addTo(map);
+      gpxLayerRef.current = gpxLayer;
+
+      cleanup = () => {
+        elevation.clear?.();
+        map.removeControl(elevation);
+        map.removeLayer(gpxLayer);
+        gpxLayerRef.current = null;
+      };
     });
 
-    gpxLayer.on("loaded", (e: { target: L.GPX }) => {
-      const gpx = e.target;
-      map.fitBounds(gpx.getBounds(), { padding: [50, 50] });
-    });
-
-    gpxLayer.addTo(map);
-    gpxLayerRef.current = gpxLayer;
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
   }, [gpxData]);
 
   return (
