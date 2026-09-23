@@ -151,7 +151,7 @@ export default function MapView({
 
       const elevation = (WL.control as any)
         .elevation({
-          position: 'bottomright',
+          position: 'topright',
           theme: 'lightblue-theme',
           detached: false,      // render as a Leaflet control inside the map
           collapsed: false,
