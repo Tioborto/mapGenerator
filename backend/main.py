@@ -14,7 +14,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-from routers import routes, geocoding, profiles
+from routers import routes, geocoding, profiles, elevation
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -64,6 +64,7 @@ app.add_middleware(
 app.include_router(routes.router,    prefix="/api", tags=["Routes"])
 app.include_router(geocoding.router, prefix="/api", tags=["Geocoding"])
 app.include_router(profiles.router,  prefix="/api", tags=["Profiles"])
+app.include_router(elevation.router, prefix="/api", tags=["Elevation"])
 
 
 @app.get("/health", tags=["Health"])

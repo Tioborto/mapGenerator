@@ -124,7 +124,7 @@ export default function MapView({
     startMarkerRef.current = marker;
 
     if (!gpxData) {
-      map.flyTo([startCoord.lat, startCoord.lon], 13, { duration: 0.8 });
+      map.flyTo([startCoord.lat, startCoord.lon], 15, { duration: 0.8 });
     }
   }, [startCoord, gpxData]);
 

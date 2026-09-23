@@ -178,7 +178,7 @@ export default function Home() {
       if (mode === "loop") {
         body.distance_km = distanceKm;
         body.direction_deg = directionDeg === "-1" ? null : parseInt(directionDeg);
-        body.seed = 42;
+        body.seed = Math.floor(Math.random() * 1_000_000);
       } else {
         body.end_lon = endCoord!.lon;
         body.end_lat = endCoord!.lat;
